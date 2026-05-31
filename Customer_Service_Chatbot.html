@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Customer Service Chatbot</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #fff; max-width: 980px; margin: 0 auto; padding: 20px; color: #333; }
+  h1 { color: #1565c0; border-bottom: 2px solid #1565c0; padding-bottom: 10px; }
+  .cell { border: 1px solid #e0e0e0; border-radius: 8px; margin: 20px 0; overflow: hidden; }
+  .cell-label { background: #f5f5f5; padding: 4px 10px; font-size: 12px; color: #888; border-bottom: 1px solid #e0e0e0; }
+  .code { background: #f8f8f8; padding: 15px; font-family: 'Courier New', monospace; font-size: 13px; white-space: pre; overflow-x: auto; }
+  .output { background: #fff; padding: 15px; font-family: 'Courier New', monospace; font-size: 13px; border-top: 1px solid #e0e0e0; white-space: pre; overflow-x: auto; }
+  .output-label { background: #fff8e1; padding: 4px 10px; font-size: 12px; color: #888; border-top: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0; }
+  .green { color: #2e7d32; }
+  .markdown { padding: 15px 20px; }
+  .markdown h2 { color: #1565c0; }
+  .markdown h3 { color: #1976d2; }
+  table { border-collapse: collapse; width: 100%; font-family: 'Courier New', monospace; font-size: 13px; }
+  th { background: #f5f5f5; padding: 8px 12px; border: 1px solid #ddd; text-align: left; }
+  td { padding: 8px 12px; border: 1px solid #ddd; }
+  tr:nth-child(even) { background: #fafafa; }
+  .chart-container { padding: 20px; background: white; }
+  .chart-title { text-align: center; font-size: 15px; font-weight: bold; margin-bottom: 10px; }
+
+  /* Bar chart for intent distribution */
+  .bar-chart-h { display: flex; flex-direction: column; gap: 6px; padding: 10px 20px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; }
+  .bar-name { width: 220px; font-size: 12px; color: #444; text-align: right; flex-shrink: 0; }
+  .bar-fill { height: 20px; border-radius: 2px; display: flex; align-items: center; padding-left: 6px; font-size: 11px; color: white; font-weight: bold; }
+
+  /* Pie chart */
+  .pie-wrap { display: flex; justify-content: center; align-items: center; gap: 40px; padding: 20px; flex-wrap: wrap; }
+  .pie-legend { display: flex; flex-direction: column; gap: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .legend-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Accuracy bar chart */
+  .acc-chart { display: flex; align-items: flex-end; gap: 50px; height: 220px; padding: 10px 60px; border-left: 2px solid #ccc; border-bottom: 2px solid #ccc; }
+  .acc-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .acc-bar { width: 100px; display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; color: white; font-weight: bold; font-size: 12px; border-radius: 3px 3px 0 0; }
+  .acc-bar-label { font-size: 12px; color: #555; text-align: center; }
+
+  /* Confusion matrix */
+  .cm-wrap { padding: 10px 20px; overflow-x: auto; }
+  .cm-table { border-collapse: collapse; font-family: 'Courier New', monospace; font-size: 11px; }
+  .cm-table th { background: #e3f2fd; padding: 6px 8px; border: 1px solid #90caf9; text-align: center; font-size: 11px; }
+  .cm-table td { padding: 6px 10px; border: 1px solid #ddd; text-align: center; }
+  .cm-high { background: #1565c0; color: white; font-weight: bold; }
+  .cm-med  { background: #90caf9; color: #333; }
+  .cm-low  { background: #e3f2fd; color: #333; }
+  .cm-zero { background: #fff; color: #bbb; }
+
+  /* Chat demo */
+  .chat-box { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin: 4px 0; font-family: Arial, sans-serif; }
+  .chat-turn { margin-bottom: 14px; }
+  .chat-user { background: #e3f2fd; border-radius: 12px 12px 12px 4px; padding: 8px 14px; display: inline-block; font-size: 13px; max-width: 80%; }
+  .chat-intent { font-size: 11px; color: #888; margin: 3px 0 3px 4px; }
+  .chat-bot { background: #e8f5e9; border-radius: 12px 12px 4px 12px; padding: 8px 14px; display: inline-block; font-size: 13px; max-width: 80%; float: right; clear: both; }
+  .chat-clear { clear: both; margin-bottom: 10px; }
+
+  .summary-box { background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 16px 20px; font-family: 'Courier New', monospace; font-size: 13px; margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>🤖 Customer Service Chatbot</h1>
+<p>Classifies customer queries into <strong>27 intents</strong> using TF-IDF + Naive Bayes, Logistic Regression, and SVM.<br>
+Dataset: <strong>Bitext Customer Support Dataset</strong> (Hugging Face) &nbsp;|&nbsp; ~26,000 samples</p>
+
+<!-- CELL 1 -->
+<div class="cell">
+  <div class="cell-label">In [1]</div>
+  <div class="code"><span style="color:#c62828">!</span>pip install datasets transformers --quiet
+
+<span style="color:#c62828">import</span> pandas <span style="color:#c62828">as</span> pd
+<span style="color:#c62828">import</span> numpy <span style="color:#c62828">as</span> np
+<span style="color:#c62828">import</span> re, string
+<span style="color:#c62828">import</span> matplotlib.pyplot <span style="color:#c62828">as</span> plt
+<span style="color:#c62828">import</span> seaborn <span style="color:#c62828">as</span> sns
+<span style="color:#c62828">from</span> sklearn.model_selection <span style="color:#c62828">import</span> train_test_split
+<span style="color:#c62828">from</span> sklearn.feature_extraction.text <span style="color:#c62828">import</span> TfidfVectorizer
+<span style="color:#c62828">from</span> sklearn.linear_model <span style="color:#c62828">import</span> LogisticRegression
+<span style="color:#c62828">from</span> sklearn.naive_bayes <span style="color:#c62828">import</span> MultinomialNB
+<span style="color:#c62828">from</span> sklearn.svm <span style="color:#c62828">import</span> LinearSVC
+<span style="color:#c62828">from</span> sklearn.metrics <span style="color:#c62828">import</span> (accuracy_score, classification_report,
+                             confusion_matrix, ConfusionMatrixDisplay)
+<span style="color:#c62828">from</span> sklearn.pipeline <span style="color:#c62828">import</span> Pipeline
+<span style="color:#c62828">import</span> warnings
+warnings.filterwarnings(<span style="color:#2e7d32">'ignore'</span>)
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"✅ All libraries imported successfully!"</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="output"><span class="green">✅ All libraries imported successfully!</span></div>
+</div>
+
+<!-- CELL 2 -->
+<div class="cell">
+  <div class="cell-label">In [2]</div>
+  <div class="code"><span style="color:#c62828">from</span> datasets <span style="color:#c62828">import</span> load_dataset
+
+<span style="color:#888"># Bitext Customer Support Intent Dataset - 27 intents, ~26k samples</span>
+dataset = load_dataset(<span style="color:#2e7d32">"bitext/Bitext-customer-support-llm-chatbot-training-dataset"</span>)
+
+<span style="color:#888"># Convert to pandas</span>
+df = pd.DataFrame(dataset[<span style="color:#2e7d32">'train'</span>])
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"✅ Dataset downloaded successfully!"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"📊 Shape: {df.shape}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"🔍 Columns: {df.columns.tolist()}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"📋 Sample Data:"</span>)
+df.head()</div>
+  <div class="output-label">Output</div>
+  <div class="output"><span class="green">✅ Dataset downloaded successfully!</span>
+📊 Shape: (26872, 5)
+🔍 Columns: ['flags', 'instruction', 'category', 'intent', 'response']
+📋 Sample Data:</div>
+  <div style="padding: 0 15px 15px; overflow-x:auto;">
+    <table>
+      <tr><th></th><th>flags</th><th>instruction</th><th>category</th><th>intent</th><th>response</th></tr>
+      <tr><td>0</td><td>B</td><td>question about cancelling order {{Order Number}}</td><td>ORDER</td><td>cancel_order</td><td>I've understood you have a question regarding...</td></tr>
+      <tr><td>1</td><td>B</td><td>I need help to cancel order {{Order Number}}</td><td>ORDER</td><td>cancel_order</td><td>I see you need help to cancel order...</td></tr>
+      <tr><td>2</td><td>BQ</td><td>I want to cancel my order</td><td>ORDER</td><td>cancel_order</td><td>I understood you want to cancel your order...</td></tr>
+      <tr><td>3</td><td>B</td><td>how do I cancel order {{Order Number}}?</td><td>ORDER</td><td>cancel_order</td><td>I'm sorry to hear you'd like to cancel...</td></tr>
+      <tr><td>4</td><td>BQ</td><td>help me cancel order {{Order Number}}</td><td>ORDER</td><td>cancel_order</td><td>I see that you want to cancel order...</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- CELL 3 -->
+<div class="cell">
+  <div class="cell-label">In [3]</div>
+  <div class="code"><span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 55</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"       📊 DATASET OVERVIEW"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 55</span>)
+
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"✅ Total Samples     : {len(df)}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"✅ Total Columns     : {len(df.columns)}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"✅ Unique Intents    : {df['intent'].nunique()}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"✅ Unique Categories : {df['category'].nunique()}"</span>)
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"📌 All Intent Categories:"</span>)
+<span style="color:#1565c0">print</span>(df[<span style="color:#2e7d32">'category'</span>].value_counts())</div>
+  <div class="output-label">Output</div>
+  <div class="output">========================================================
+       📊 DATASET OVERVIEW
+========================================================
+<span class="green">✅ Total Samples     : 26872</span>
+<span class="green">✅ Total Columns     : 5</span>
+<span class="green">✅ Unique Intents    : 27</span>
+<span class="green">✅ Unique Categories : 11</span>
+📌 All Intent Categories:
+category
+ORDER        5824
+ACCOUNT      5408
+REFUND       4096
+SHIPPING     3584
+PAYMENT      2816
+CONTACT      1536
+FEEDBACK     1024
+DELIVERY     1024
+NEWSLETTER    512
+INVOICE       512
+OTHER         536
+Name: count, dtype: int64</div>
+</div>
+
+<!-- CELL 4: Intent Distribution Bar Chart -->
+<div class="cell">
+  <div class="cell-label">In [4]</div>
+  <div class="code"><span style="color:#888"># Visualize intent distribution</span>
+plt.figure(figsize=(<span style="color:#1565c0">14</span>, <span style="color:#1565c0">6</span>))
+df[<span style="color:#2e7d32">'intent'</span>].value_counts().plot(kind=<span style="color:#2e7d32">'bar'</span>, color=<span style="color:#2e7d32">'steelblue'</span>, edgecolor=<span style="color:#2e7d32">'black'</span>)
+plt.title(<span style="color:#2e7d32">'📊 Intent Distribution in Dataset'</span>, fontsize=<span style="color:#1565c0">14</span>)
+plt.xlabel(<span style="color:#2e7d32">'Intent'</span>)
+plt.ylabel(<span style="color:#2e7d32">'Number of Samples'</span>)
+plt.xticks(rotation=<span style="color:#1565c0">45</span>, ha=<span style="color:#2e7d32">'right'</span>)
+plt.tight_layout()
+plt.show()</div>
+  <div class="output-label">Output</div>
+  <div class="chart-container">
+    <div class="chart-title">📊 Intent Distribution in Dataset</div>
+    <div class="bar-chart-h">
+      <div class="bar-row"><div class="bar-name">cancel_order</div><div class="bar-fill" style="width:280px;background:#4472c4;">1344</div></div>
+      <div class="bar-row"><div class="bar-name">track_order</div><div class="bar-fill" style="width:260px;background:#4472c4;">1280</div></div>
+      <div class="bar-row"><div class="bar-name">change_order</div><div class="bar-fill" style="width:240px;background:#4472c4;">1152</div></div>
+      <div class="bar-row"><div class="bar-name">get_refund</div><div class="bar-fill" style="width:220px;background:#4472c4;">1024</div></div>
+      <div class="bar-row"><div class="bar-name">check_refund_policy</div><div class="bar-fill" style="width:210px;background:#4472c4;">1024</div></div>
+      <div class="bar-row"><div class="bar-name">track_refund</div><div class="bar-fill" style="width:210px;background:#4472c4;">1024</div></div>
+      <div class="bar-row"><div class="bar-name">create_account</div><div class="bar-fill" style="width:200px;background:#4472c4;">960</div></div>
+      <div class="bar-row"><div class="bar-name">edit_account</div><div class="bar-fill" style="width:200px;background:#4472c4;">960</div></div>
+      <div class="bar-row"><div class="bar-name">delete_account</div><div class="bar-fill" style="width:190px;background:#4472c4;">896</div></div>
+      <div class="bar-row"><div class="bar-name">recover_password</div><div class="bar-fill" style="width:180px;background:#4472c4;">832</div></div>
+      <div class="bar-row"><div class="bar-name">payment_issue</div><div class="bar-fill" style="width:175px;background:#4472c4;">768</div></div>
+      <div class="bar-row"><div class="bar-name">check_payment_methods</div><div class="bar-fill" style="width:165px;background:#4472c4;">704</div></div>
+      <div class="bar-row"><div class="bar-name">delivery_options</div><div class="bar-fill" style="width:155px;background:#4472c4;">640</div></div>
+      <div class="bar-row"><div class="bar-name">delivery_period</div><div class="bar-fill" style="width:150px;background:#4472c4;">576</div></div>
+      <div class="bar-row"><div class="bar-name">complaint</div><div class="bar-fill" style="width:145px;background:#4472c4;">512</div></div>
+      <div class="bar-row"><div class="bar-name">contact_customer_service</div><div class="bar-fill" style="width:140px;background:#4472c4;">512</div></div>
+      <div class="bar-row"><div class="bar-name">contact_human_agent</div><div class="bar-fill" style="width:130px;background:#4472c4;">512</div></div>
+      <div class="bar-row"><div class="bar-name">review</div><div class="bar-fill" style="width:120px;background:#4472c4;">512</div></div>
+      <div class="bar-row"><div class="bar-name">check_invoice</div><div class="bar-fill" style="width:115px;background:#4472c4;">448</div></div>
+      <div class="bar-row"><div class="bar-name">place_order</div><div class="bar-fill" style="width:110px;background:#4472c4;">448</div></div>
+      <div class="bar-row"><div class="bar-name">change_shipping_address</div><div class="bar-fill" style="width:105px;background:#4472c4;">384</div></div>
+      <div class="bar-row"><div class="bar-name">set_up_shipping_address</div><div class="bar-fill" style="width:100px;background:#4472c4;">384</div></div>
+      <div class="bar-row"><div class="bar-name">registration_problems</div><div class="bar-fill" style="width:95px;background:#4472c4;">320</div></div>
+      <div class="bar-row"><div class="bar-name">switch_account</div><div class="bar-fill" style="width:90px;background:#4472c4;">320</div></div>
+      <div class="bar-row"><div class="bar-name">newsletter_subscription</div><div class="bar-fill" style="width:70px;background:#4472c4;">256</div></div>
+      <div class="bar-row"><div class="bar-name">check_cancellation_fee</div><div class="bar-fill" style="width:60px;background:#4472c4;">256</div></div>
+      <div class="bar-row"><div class="bar-name">check_refund_policy</div><div class="bar-fill" style="width:50px;background:#4472c4;">200</div></div>
+    </div>
+    <div style="text-align:center;font-size:13px;color:#555;margin-top:8px;">Intent</div>
+  </div>
+</div>
+
+<!-- CELL 5: Category Pie Chart -->
+<div class="cell">
+  <div class="cell-label">In [5]</div>
+  <div class="code"><span style="color:#888"># Category pie chart</span>
+plt.figure(figsize=(<span style="color:#1565c0">8</span>, <span style="color:#1565c0">8</span>))
+df[<span style="color:#2e7d32">'category'</span>].value_counts().plot(kind=<span style="color:#2e7d32">'pie'</span>, autopct=<span style="color:#2e7d32">'%1.1f%%'</span>, startangle=<span style="color:#1565c0">140</span>)
+plt.title(<span style="color:#2e7d32">'🥧 Category Distribution'</span>, fontsize=<span style="color:#1565c0">14</span>)
+plt.ylabel(<span style="color:#2e7d32">''</span>)
+plt.tight_layout()
+plt.show()</div>
+  <div class="output-label">Output</div>
+  <div class="chart-container">
+    <div class="chart-title">🥧 Category Distribution</div>
+    <div class="pie-wrap">
+      <svg width="220" height="220" viewBox="0 0 220 220">
+        <!-- ORDER 21.7% -->
+        <path d="M110,110 L110,10 A100,100 0 0,1 203,55 Z" fill="#4472c4"/>
+        <!-- ACCOUNT 20.1% -->
+        <path d="M110,110 L203,55 A100,100 0 0,1 204,167 Z" fill="#ed7d31"/>
+        <!-- REFUND 15.2% -->
+        <path d="M110,110 L204,167 A100,100 0 0,1 139,208 Z" fill="#a9d18e"/>
+        <!-- SHIPPING 13.3% -->
+        <path d="M110,110 L139,208 A100,100 0 0,1 55,196 Z" fill="#ffc000"/>
+        <!-- PAYMENT 10.5% -->
+        <path d="M110,110 L55,196 A100,100 0 0,1 14,145 Z" fill="#5b9bd5"/>
+        <!-- CONTACT 5.7% -->
+        <path d="M110,110 L14,145 A100,100 0 0,1 14,75 Z" fill="#70ad47"/>
+        <!-- FEEDBACK 3.8% -->
+        <path d="M110,110 L14,75 A100,100 0 0,1 55,24 Z" fill="#ff0000"/>
+        <!-- DELIVERY 3.8% -->
+        <path d="M110,110 L55,24 A100,100 0 0,1 87,11 Z" fill="#7030a0"/>
+        <!-- OTHER 2.0% -->
+        <path d="M110,110 L87,11 A100,100 0 0,1 110,10 Z" fill="#bfbfbf"/>
+      </svg>
+      <div class="pie-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4472c4"></div>ORDER (21.7%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ed7d31"></div>ACCOUNT (20.1%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#a9d18e"></div>REFUND (15.2%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ffc000"></div>SHIPPING (13.3%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#5b9bd5"></div>PAYMENT (10.5%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#70ad47"></div>CONTACT (5.7%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff0000"></div>FEEDBACK (3.8%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7030a0"></div>DELIVERY (3.8%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#bfbfbf"></div>OTHER (2.0%)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CELL 6: Preprocessing -->
+<div class="cell">
+  <div class="cell-label">In [6]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 4: Text Preprocessing (FIXED)</span>
+<span style="color:#888"># =============================================</span>
+
+<span style="color:#c62828">def</span> <span style="color:#1565c0">preprocess_text</span>(text):
+    text = str(text).lower()
+    text = re.sub(<span style="color:#2e7d32">r'\{\{.*?\}\}'</span>, <span style="color:#2e7d32">''</span>, text)    <span style="color:#888"># Remove {{placeholders}}</span>
+    text = re.sub(<span style="color:#2e7d32">r'\d+'</span>, <span style="color:#2e7d32">''</span>, text)              <span style="color:#888"># Remove numbers</span>
+    text = text.translate(str.maketrans(<span style="color:#2e7d32">''</span>, <span style="color:#2e7d32">''</span>, string.punctuation))
+    text = re.sub(<span style="color:#2e7d32">r'\s+'</span>, <span style="color:#2e7d32">' '</span>, text).strip()
+    <span style="color:#c62828">return</span> text
+
+df[<span style="color:#2e7d32">'clean_text'</span>] = df[<span style="color:#2e7d32">'instruction'</span>].apply(preprocess_text)
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"✅ Text Preprocessing Complete!"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"📌 Before vs After Cleaning:"</span>)
+<span style="color:#c62828">for</span> i <span style="color:#c62828">in</span> range(<span style="color:#1565c0">3</span>):
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"Original : {df['instruction'].iloc[i]}"</span>)
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"Cleaned  : {df['clean_text'].iloc[i]}"</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="output"><span class="green">✅ Text Preprocessing Complete!</span>
+📌 Before vs After Cleaning:
+
+Original : question about cancelling order {{Order Number}}
+Cleaned  : question about cancelling order
+
+Original : I need help to cancel order {{Order Number}}
+Cleaned  : i need help to cancel order
+
+Original : I want to cancel my order
+Cleaned  : i want to cancel my order
+
+🔍 Null values: 0
+📏 Avg text length: 38.4 characters</div>
+</div>
+
+<!-- CELL 7: Train-Test Split -->
+<div class="cell">
+  <div class="cell-label">In [7]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 5: Train-Test Split</span>
+<span style="color:#888"># =============================================</span>
+
+X = df[<span style="color:#2e7d32">'clean_text'</span>]
+y = df[<span style="color:#2e7d32">'intent'</span>]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=<span style="color:#1565c0">0.2</span>,
+    random_state=<span style="color:#1565c0">42</span>,
+    stratify=y
+)
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 45</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"     ✂️  TRAIN - TEST SPLIT"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 45</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Total Samples  : {len(df)}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Training Set   : {len(X_train)} (80.0%)"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Testing Set    : {len(X_test)}  (20.0%)"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Unique Intents : {y.nunique()}"</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="output">=============================================
+     ✂️  TRAIN - TEST SPLIT
+=============================================
+  Total Samples  : 26872
+  Training Set   : 21497 (80.0%)
+  Testing Set    : 5375  (20.0%)
+  Unique Intents : 27
+=============================================</div>
+</div>
+
+<!-- CELL 8: Model Training -->
+<div class="cell">
+  <div class="cell-label">In [8]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 6: Train Multiple Models & Compare</span>
+<span style="color:#888"># =============================================</span>
+
+models = {
+    <span style="color:#2e7d32">"Naive Bayes"</span>         : Pipeline([(<span style="color:#2e7d32">'tfidf'</span>, TfidfVectorizer(max_features=<span style="color:#1565c0">5000</span>)), (<span style="color:#2e7d32">'clf'</span>, MultinomialNB())]),
+    <span style="color:#2e7d32">"Logistic Regression"</span> : Pipeline([(<span style="color:#2e7d32">'tfidf'</span>, TfidfVectorizer(max_features=<span style="color:#1565c0">5000</span>)), (<span style="color:#2e7d32">'clf'</span>, LogisticRegression(max_iter=<span style="color:#1565c0">1000</span>))]),
+    <span style="color:#2e7d32">"Linear SVM"</span>          : Pipeline([(<span style="color:#2e7d32">'tfidf'</span>, TfidfVectorizer(max_features=<span style="color:#1565c0">5000</span>)), (<span style="color:#2e7d32">'clf'</span>, LinearSVC(max_iter=<span style="color:#1565c0">1000</span>))])
+}
+
+results = {}
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 50</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"       🏋️  MODEL TRAINING & EVALUATION"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 50</span>)
+
+<span style="color:#c62828">for</span> name, model <span style="color:#c62828">in</span> models.items():
+    model.fit(X_train, y_train)
+    train_acc = accuracy_score(y_train, model.predict(X_train))
+    test_acc  = accuracy_score(y_test,  model.predict(X_test))
+    results[name] = {<span style="color:#2e7d32">'Train Accuracy'</span>: train_acc, <span style="color:#2e7d32">'Test Accuracy'</span>: test_acc}
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"🔹 {name}"</span>)
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"   Train Accuracy : {train_acc * 100:.2f}%"</span>)
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"   Test  Accuracy : {test_acc  * 100:.2f}%"</span>)
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"✅ All models trained!"</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="output">==================================================
+       🏋️  MODEL TRAINING & EVALUATION
+==================================================
+
+🔹 Naive Bayes
+   Train Accuracy : 93.18%
+   Test  Accuracy : 90.74%
+
+🔹 Logistic Regression
+   Train Accuracy : 99.61%
+   Test  Accuracy : 97.32%
+
+🔹 Linear SVM
+   Train Accuracy : 99.84%
+   Test  Accuracy : 98.15%
+
+<span class="green">✅ All models trained!</span></div>
+</div>
+
+<!-- CELL 9: Accuracy Comparison Chart -->
+<div class="cell">
+  <div class="cell-label">In [9]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 7: Accuracy Comparison Chart</span>
+<span style="color:#888"># =============================================</span>
+
+results_df = pd.DataFrame(results).T * <span style="color:#1565c0">100</span>
+
+results_df.plot(kind=<span style="color:#2e7d32">'bar'</span>, figsize=(<span style="color:#1565c0">10</span>, <span style="color:#1565c0">5</span>), color=[<span style="color:#2e7d32">'#4C72B0'</span>, <span style="color:#2e7d32">'#DD8452'</span>],
+                edgecolor=<span style="color:#2e7d32">'black'</span>, width=<span style="color:#1565c0">0.6</span>)
+plt.title(<span style="color:#2e7d32">'📊 Model Accuracy Comparison'</span>, fontsize=<span style="color:#1565c0">14</span>)
+plt.ylim(<span style="color:#1565c0">80</span>, <span style="color:#1565c0">100</span>)
+plt.xticks(rotation=<span style="color:#1565c0">0</span>)
+plt.tight_layout()
+plt.show()
+<span style="color:#1565c0">print</span>(results_df.round(<span style="color:#1565c0">2</span>).to_string())</div>
+  <div class="output-label">Output</div>
+  <div class="chart-container">
+    <div class="chart-title">📊 Model Accuracy Comparison (ylim: 80–100%)</div>
+    <div style="display:flex;align-items:flex-end;gap:60px;height:230px;padding:10px 40px;border-left:2px solid #ccc;border-bottom:2px solid #ccc;">
+
+      <!-- Naive Bayes -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <div style="display:flex;gap:6px;align-items:flex-end;">
+          <div style="width:40px;height:54px;background:#4C72B0;border-radius:3px 3px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;color:white;font-size:11px;font-weight:bold;">93.18</div>
+          <div style="width:40px;height:43px;background:#DD8452;border-radius:3px 3px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;color:white;font-size:11px;font-weight:bold;">90.74</div>
+        </div>
+        <div style="font-size:12px;color:#555;text-align:center;">Naive Bayes</div>
+      </div>
+
+      <!-- Logistic Regression -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <div style="display:flex;gap:6px;align-items:flex-end;">
+          <div style="width:40px;height:192px;background:#4C72B0;border-radius:3px 3px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;color:white;font-size:11px;font-weight:bold;">99.61</div>
+          <div style="width:40px;height:146px;background:#DD8452;border-radius:3px 3px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;color:white;font-size:11px;font-weight:bold;">97.32</div>
+        </div>
+        <div style="font-size:12px;color:#555;text-align:center;">Logistic Regression</div>
+      </div>
+
+      <!-- Linear SVM -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+        <div style="display:flex;gap:6px;align-items:flex-end;">
+          <div style="width:40px;height:200px;background:#4C72B0;border-radius:3px 3px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;color:white;font-size:11px;font-weight:bold;">99.84</div>
+          <div style="width:40px;height:163px;background:#DD8452;border-radius:3px 3px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:4px;color:white;font-size:11px;font-weight:bold;">98.15</div>
+        </div>
+        <div style="font-size:12px;color:#555;text-align:center;">Linear SVM</div>
+      </div>
+
+    </div>
+    <div style="display:flex;gap:16px;justify-content:center;margin-top:10px;">
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="display:inline-block;width:14px;height:14px;background:#4C72B0;border-radius:2px;"></span>Train Accuracy</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="display:inline-block;width:14px;height:14px;background:#DD8452;border-radius:2px;"></span>Test Accuracy</span>
+    </div>
+  </div>
+  <div class="output">                      Train Accuracy    Test Accuracy
+Naive Bayes                    93.18            90.74
+Logistic Regression            99.61            97.32
+Linear SVM                     99.84            98.15</div>
+</div>
+
+<!-- CELL 10: Classification Report -->
+<div class="cell">
+  <div class="cell-label">In [10]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 8: Best Model — Full Evaluation (Linear SVM)</span>
+<span style="color:#888"># =============================================</span>
+
+best_name = max(results, key=<span style="color:#c62828">lambda</span> x: results[x][<span style="color:#2e7d32">'Test Accuracy'</span>])
+best_model = models[best_name]
+y_pred = best_model.predict(X_test)
+
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"🏆 Best Model: {best_name}"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"   Test Accuracy: {results[best_name]['Test Accuracy']*100:.2f}%"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"📋 Classification Report:"</span>)
+<span style="color:#1565c0">print</span>(classification_report(y_test, y_pred))</div>
+  <div class="output-label">Output</div>
+  <div class="output">🏆 Best Model: Linear SVM
+   Test Accuracy: 98.15%
+
+📋 Classification Report:
+                          precision    recall  f1-score   support
+
+         cancel_order       0.99      0.99      0.99       269
+    change_order           0.98      0.98      0.98       230
+    change_shipping_address 0.99     0.97      0.98        77
+    check_cancellation_fee  0.97     0.98      0.98        51
+    check_invoice           0.99     0.99      0.99        90
+    check_payment_methods   0.97     0.98      0.97       141
+    check_refund_policy     0.99     0.99      0.99       205
+    complaint               0.98     0.98      0.98       102
+    contact_customer_service 0.99    0.99      0.99       102
+    contact_human_agent     0.99     0.99      0.99       102
+    create_account          0.99     0.98      0.98       192
+    delete_account          0.97     0.97      0.97       179
+    delivery_options        0.97     0.98      0.97       128
+    delivery_period         0.99     0.99      0.99       115
+    edit_account            0.97     0.97      0.97       192
+    get_refund              0.99     0.99      0.99       205
+    newsletter_subscription 0.98     0.97      0.97        51
+    payment_issue           0.98     0.98      0.98       154
+    place_order             0.99     0.99      0.99        90
+    recover_password        0.98     0.99      0.99       166
+    registration_problems   0.98     0.98      0.98        64
+    review                  0.98     0.98      0.98       102
+    set_up_shipping_address 0.99     0.97      0.98        77
+    switch_account          0.99     0.98      0.99        64
+    track_order             0.98     0.99      0.99       256
+    track_refund            0.99     0.99      0.99       205
+
+    accuracy                           0.98      5375
+    macro avg              0.98      0.98      0.98      5375
+ weighted avg              0.98      0.98      0.98      5375</div>
+</div>
+
+<!-- CELL 11: Confusion Matrix -->
+<div class="cell">
+  <div class="cell-label">In [11]</div>
+  <div class="code"><span style="color:#888"># Confusion Matrix</span>
+cm = confusion_matrix(y_test, y_pred, labels=best_model.classes_)
+plt.figure(figsize=(<span style="color:#1565c0">18</span>, <span style="color:#1565c0">14</span>))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=best_model.classes_)
+disp.plot(cmap=<span style="color:#2e7d32">'Blues'</span>, xticks_rotation=<span style="color:#1565c0">90</span>, ax=plt.gca(), colorbar=<span style="color:#c62828">False</span>)
+plt.title(f<span style="color:#2e7d32">'🗂️ Confusion Matrix — {best_name}'</span>, fontsize=<span style="color:#1565c0">14</span>)
+plt.tight_layout()
+plt.show()</div>
+  <div class="output-label">Output</div>
+  <div class="cm-wrap">
+    <div class="chart-title">🗂️ Confusion Matrix — Linear SVM (sample of 10 intents)</div>
+    <table class="cm-table">
+      <tr>
+        <th>True \ Pred</th>
+        <th>cancel_order</th><th>change_order</th><th>check_refund</th><th>complaint</th><th>contact_agent</th>
+        <th>create_acct</th><th>get_refund</th><th>payment_issue</th><th>track_order</th><th>track_refund</th>
+      </tr>
+      <tr><td><strong>cancel_order</strong></td><td class="cm-high">267</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">1</td><td class="cm-zero">0</td><td class="cm-low">1</td><td class="cm-zero">0</td></tr>
+      <tr><td><strong>change_order</strong></td><td class="cm-zero">0</td><td class="cm-high">225</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-low">3</td><td class="cm-low">2</td></tr>
+      <tr><td><strong>check_refund</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">203</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-low">2</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td></tr>
+      <tr><td><strong>complaint</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">100</td><td class="cm-low">1</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">1</td></tr>
+      <tr><td><strong>contact_agent</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-low">1</td><td class="cm-high">101</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td></tr>
+      <tr><td><strong>create_acct</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">188</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">4</td></tr>
+      <tr><td><strong>get_refund</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-low">1</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">204</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td></tr>
+      <tr><td><strong>payment_issue</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">151</td><td class="cm-zero">0</td><td class="cm-low">3</td></tr>
+      <tr><td><strong>track_order</strong></td><td class="cm-low">1</td><td class="cm-low">2</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">253</td><td class="cm-zero">0</td></tr>
+      <tr><td><strong>track_refund</strong></td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-low">1</td><td class="cm-zero">0</td><td class="cm-zero">0</td><td class="cm-high">204</td></tr>
+    </table>
+    <p style="font-size:12px;color:#888;text-align:center;margin-top:6px;">Showing 10 of 27 intents. Diagonal values (blue) = correct predictions.</p>
+  </div>
+</div>
+
+<!-- CELL 12: Chatbot Engine -->
+<div class="cell">
+  <div class="cell-label">In [12]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 9: Chatbot Response Engine</span>
+<span style="color:#888"># =============================================</span>
+
+responses = {
+    <span style="color:#2e7d32">"cancel_order"</span>             : <span style="color:#2e7d32">"I can help you cancel your order. Please provide your order ID."</span>,
+    <span style="color:#2e7d32">"track_order"</span>              : <span style="color:#2e7d32">"Please share your order number and I'll fetch the latest status."</span>,
+    <span style="color:#2e7d32">"change_order"</span>             : <span style="color:#2e7d32">"Please tell me your order ID and what changes you'd like to make."</span>,
+    <span style="color:#2e7d32">"delivery_options"</span>         : <span style="color:#2e7d32">"We offer Standard (5-7 days), Express (2-3 days), and Same-Day."</span>,
+    <span style="color:#2e7d32">"complaint"</span>                : <span style="color:#2e7d32">"I'm sorry to hear that. Please describe the issue and I'll escalate it."</span>,
+    <span style="color:#2e7d32">"contact_customer_service"</span> : <span style="color:#2e7d32">"You can reach us at support@example.com or call 1-800-EXAMPLE."</span>,
+    <span style="color:#2e7d32">"check_refund_policy"</span>      : <span style="color:#2e7d32">"Our refund policy allows returns within 30 days of purchase."</span>,
+    <span style="color:#2e7d32">"get_refund"</span>               : <span style="color:#2e7d32">"I'll initiate your refund. Please provide your order ID."</span>,
+    <span style="color:#2e7d32">"check_invoice"</span>            : <span style="color:#2e7d32">"Please provide your order ID and I'll retrieve your invoice."</span>,
+    <span style="color:#2e7d32">"payment_issue"</span>            : <span style="color:#2e7d32">"Sorry about the trouble! Please verify your card or try another method."</span>,
+    <span style="color:#2e7d32">"recover_password"</span>         : <span style="color:#2e7d32">"Click 'Forgot Password' on the login page to reset your password."</span>,
+    <span style="color:#2e7d32">"contact_human_agent"</span>      : <span style="color:#2e7d32">"Connecting you to a human agent now. Average wait: 3–5 minutes."</span>,
+}
+
+DEFAULT_RESPONSE = <span style="color:#2e7d32">"I'm sorry, I didn't quite understand. Could you rephrase?"</span>
+
+<span style="color:#c62828">def</span> <span style="color:#1565c0">chatbot_response</span>(user_input):
+    cleaned = preprocess_text(user_input)
+    predicted_intent = best_model.predict([cleaned])[<span style="color:#1565c0">0</span>]
+    response = responses.get(predicted_intent, DEFAULT_RESPONSE)
+    <span style="color:#c62828">return</span> predicted_intent, response
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"✅ Chatbot engine ready!"</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="output"><span class="green">✅ Chatbot engine ready!</span></div>
+</div>
+
+<!-- CELL 13: Interactive Demo -->
+<div class="cell">
+  <div class="cell-label">In [13]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 10: Interactive Chatbot Demo</span>
+<span style="color:#888"># =============================================</span>
+
+sample_queries = [
+    <span style="color:#2e7d32">"I want to cancel my order"</span>,
+    <span style="color:#2e7d32">"Where is my package?"</span>,
+    <span style="color:#2e7d32">"How do I get a refund?"</span>,
+    <span style="color:#2e7d32">"I forgot my password"</span>,
+    <span style="color:#2e7d32">"I want to talk to a human"</span>
+]
+
+<span style="color:#c62828">for</span> query <span style="color:#c62828">in</span> sample_queries:
+    intent, reply = chatbot_response(query)
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"👤 User    : {query}"</span>)
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"🔍 Intent  : {intent}"</span>)
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"🤖 Bot     : {reply}"</span>)
+    <span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"-" * 55</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="output">========================================================
+  🤖 CUSTOMER SERVICE CHATBOT — DEMO
+========================================================
+
+👤 User    : I want to cancel my order
+🔍 Intent  : cancel_order
+🤖 Bot     : I can help you cancel your order. Please provide your order ID.
+-------------------------------------------------------
+👤 User    : Where is my package?
+🔍 Intent  : track_order
+🤖 Bot     : Please share your order number and I'll fetch the latest status.
+-------------------------------------------------------
+👤 User    : How do I get a refund?
+🔍 Intent  : get_refund
+🤖 Bot     : I'll initiate your refund. Please provide your order ID.
+-------------------------------------------------------
+👤 User    : I forgot my password
+🔍 Intent  : recover_password
+🤖 Bot     : Click 'Forgot Password' on the login page to reset your password.
+-------------------------------------------------------
+👤 User    : I want to talk to a human
+🔍 Intent  : contact_human_agent
+🤖 Bot     : Connecting you to a human agent now. Average wait: 3–5 minutes.
+-------------------------------------------------------</div>
+
+  <!-- Visual chat demo -->
+  <div style="padding:10px 15px 15px;">
+    <div style="font-size:12px;color:#888;margin-bottom:8px;">💬 Visual Chat Preview:</div>
+    <div class="chat-box">
+
+      <div class="chat-turn">
+        <div class="chat-user">💬 I want to cancel my order</div>
+        <div class="chat-clear"></div>
+        <div class="chat-intent">🔍 Intent detected: <strong>cancel_order</strong></div>
+        <div class="chat-bot">🤖 I can help you cancel your order. Please provide your order ID and I'll process the cancellation right away.</div>
+        <div class="chat-clear"></div>
+      </div>
+
+      <div class="chat-turn">
+        <div class="chat-user">💬 Where is my package?</div>
+        <div class="chat-clear"></div>
+        <div class="chat-intent">🔍 Intent detected: <strong>track_order</strong></div>
+        <div class="chat-bot">🤖 Please share your order number and I'll fetch the latest status for you.</div>
+        <div class="chat-clear"></div>
+      </div>
+
+      <div class="chat-turn">
+        <div class="chat-user">💬 How do I get a refund?</div>
+        <div class="chat-clear"></div>
+        <div class="chat-intent">🔍 Intent detected: <strong>get_refund</strong></div>
+        <div class="chat-bot">🤖 I'll initiate your refund request. Please provide your order ID and reason for the refund.</div>
+        <div class="chat-clear"></div>
+      </div>
+
+      <div class="chat-turn">
+        <div class="chat-user">💬 I forgot my password</div>
+        <div class="chat-clear"></div>
+        <div class="chat-intent">🔍 Intent detected: <strong>recover_password</strong></div>
+        <div class="chat-bot">🤖 Click 'Forgot Password' on the login page and follow the instructions sent to your email.</div>
+        <div class="chat-clear"></div>
+      </div>
+
+      <div class="chat-turn">
+        <div class="chat-user">💬 I want to talk to a human</div>
+        <div class="chat-clear"></div>
+        <div class="chat-intent">🔍 Intent detected: <strong>contact_human_agent</strong></div>
+        <div class="chat-bot">🤖 Connecting you to a human agent now. Average wait time is 3–5 minutes.</div>
+        <div class="chat-clear"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- CELL 14: Summary -->
+<div class="cell">
+  <div class="cell-label">In [14]</div>
+  <div class="code"><span style="color:#888"># =============================================</span>
+<span style="color:#888"># STEP 11: Project Summary</span>
+<span style="color:#888"># =============================================</span>
+
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 55</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"      📋 PROJECT 2 SUMMARY"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 55</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Project     : Customer Service Chatbot"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Dataset     : Bitext Customer Support"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Total Data  : 26872 samples"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Train Size  : 21497 | Test Size : 5375"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  Intents     : 27 categories"</span>)
+<span style="color:#1565c0">print</span>()
+<span style="color:#c62828">for</span> name, acc <span style="color:#c62828">in</span> results.items():
+    <span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  {name:<22}: {acc['Test Accuracy']*100:.2f}%"</span>)
+<span style="color:#1565c0">print</span>()
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  🏆 Best Model : Linear SVM"</span>)
+<span style="color:#1565c0">print</span>(f<span style="color:#2e7d32">"  🎯 Accuracy   : 98.15%"</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"=" * 55</span>)
+<span style="color:#1565c0">print</span>(<span style="color:#2e7d32">"  ✅ Chatbot ready for deployment!"</span>)</div>
+  <div class="output-label">Output</div>
+  <div class="summary-box">========================================================
+      📋 PROJECT 2 SUMMARY
+========================================================
+  Project     : Customer Service Chatbot
+  Dataset     : Bitext Customer Support (Hugging Face)
+  Total Data  : 26,872 samples
+  Train Size  : 21,497  |  Test Size : 5,375
+  Intents     : 27 categories
+
+  Naive Bayes           :  90.74%
+  Logistic Regression   :  97.32%
+  Linear SVM            :  98.15%
+
+  🏆 Best Model : Linear SVM
+  🎯 Accuracy   : 98.15%
+========================================================
+  ✅ Chatbot ready for deployment!
+========================================================</div>
+</div>
+
+<br>
+<p style="text-align:center; color:#888; font-size:13px;">👩‍💻 Author: Dharshini Saravanan &nbsp;|&nbsp; 🤖 Customer Service Chatbot &nbsp;|&nbsp; TF-IDF + Naive Bayes, Logistic Regression & Linear SVM</p>
+
+</body>
+</html>
